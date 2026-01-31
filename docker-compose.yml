@@ -65,7 +65,7 @@ services:
       # Queue mode (使用 Redis 作為 queue)
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
-      - EXECUTIONS_MODE=queue
+      - EXECUTIONS_MODE=regular
 
     volumes:
       - ~/n8n-data:/home/node/.n8n
