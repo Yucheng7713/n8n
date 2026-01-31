@@ -1,0 +1,19 @@
+n8n.yuchsieh.com {
+    reverse_proxy n8n:5678
+    
+    header {
+        # Activate HSTS
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        
+        # Prevent clickjacking
+        X-Frame-Options "SAMEORIGIN"
+        
+        # XSS protection
+        X-Content-Type-Options "nosniff"
+        X-XSS-Protection "1; mode=block"
+    }
+    
+    log {
+        output file /data/access.log
+    }
+}

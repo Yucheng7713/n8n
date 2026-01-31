@@ -1,0 +1,91 @@
+version: '3.8'
+
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - n8n
+    mem_limit: 128m
+    mem_reservation: 64m
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    env_file:
+      - .env 
+    expose:
+      - "${N8N_PORT}"
+    environment:
+      # Basic settings
+      - N8N_HOST=${N8N_EXTERNAL_HOST}
+      - N8N_PORT=${N8N_PORT}
+      - N8N_PROTOCOL=https
+      - GENERIC_TIMEZONE=${TIMEZONE}
+
+      # Authentication
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_ADMIN_USERNAME}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_ADMIN_PASSWORD}
+
+      # Webhook settings
+      - WEBHOOK_URL=https://${N8N_EXTERNAL_HOST}/
+
+      # Optimization
+      - EXECUTIONS_DATA_PRUNE=true  # Auto prune execution data
+      - EXECUTIONS_DATA_MAX_AGE=168  # Keep executions for 7 days (168 hours)
+      - EXECUTIONS_DATA_SAVE_ON_ERROR=all
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=all
+      - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=true
+
+      # Jounalism settings
+      - N8N_LOG_LEVEL=warn
+      - N8N_LOG_OUTPUT=console
+
+      # For Redis cache
+      - N8N_USER_MANAGEMENT_DISABLED=true
+    volumes:
+      - ~/n8n-data:/home/node/.n8n
+    depends_on:
+      - redis
+    mem_limit: 600m
+    mem_reservation: 300m
+    cpus: 1.5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 100mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --appendonly yes
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    mem_limit: 128m
+    mem_reservation: 64m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  n8n-data:
+  caddy_data:
+  caddy_config:
+  redis_data:
