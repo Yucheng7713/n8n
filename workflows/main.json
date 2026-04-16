@@ -1,0 +1,530 @@
+{
+  "name": "Fushimi Bot",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "line-bot",
+        "options": {
+          "responseCode": {
+            "values": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        12192,
+        2320
+      ],
+      "id": "917a7b3c-2c29-4aff-9211-7447222d093f",
+      "name": "Webhook",
+      "webhookId": "9988f604-80c4-4e72-87f0-c3ab971d25ce"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get LINE webhook data with comprehensive error handling\ntry {\n  const body = $input.item.json.body;\n\n  // Validate body exists\n  if (!body) {\n    console.log('No body in webhook request');\n    return [];\n  }\n\n  // Check if events present\n  if (!body.events || !Array.isArray(body.events) || body.events.length === 0) {\n    console.log('No events in webhook request');\n    return [];\n  }\n\n  // Parse first event (LINE sends one event per request typically)\n  const event = body.events[0];\n\n  // Validate event structure\n  if (!event || !event.type) {\n    console.log('Invalid event structure');\n    return [];\n  }\n\n  // Only process text messages\n  if (event.type !== 'message' || event.message?.type !== 'text') {\n    console.log(`Ignoring non-text event: ${event.type}`);\n    return [];\n  }\n\n  // Validate required fields\n  if (!event.replyToken || !event.source?.userId || !event.message?.text) {\n    console.log('Missing required fields in event');\n    return [];\n  }\n\n  // Extract necessary information\n  return {\n    json: {\n      replyToken: event.replyToken,\n      userId: event.source.userId,\n      userMessage: event.message.text,\n      timestamp: event.timestamp || Date.now()\n    }\n  };\n} catch (error) {\n  console.error('Error in Initial Parse:', error);\n  return [];\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        12480,
+        2640
+      ],
+      "id": "8828e85b-dd8e-4fbd-bd66-ad0e0a3dbb5a",
+      "name": "Initial Parse"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.userMessage }}",
+        "options": {
+          "systemMessage": "=今天日期是 {{ $now.format('YYYY/MM/DD') }}\n目前伏見家成員都在日本東京\n\n你是伏見家專屬的得力AI助手。請一律使用繁體中文（台灣用語）回覆。"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        12912,
+        2640
+      ],
+      "id": "55498d4c-867d-441c-9aab-c14098f69c20",
+      "name": "AI Agent",
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "claude-sonnet-4-5-20250929",
+          "cachedResultName": "Claude Sonnet 4.5"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatAnthropic",
+      "typeVersion": 1.3,
+      "position": [
+        12480,
+        2880
+      ],
+      "id": "9d50800d-e5a1-4460-a06f-858fef14694b",
+      "name": "Anthropic Chat Model",
+      "credentials": {
+        "anthropicApi": {
+          "id": "LpH1FZcn9Q6VJOzp",
+          "name": "Anthropic account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "=line:{{ $('Initial Parse').item.json.userId }}",
+        "sessionTTL": 3600
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryRedisChat",
+      "typeVersion": 1.5,
+      "position": [
+        12480,
+        3088
+      ],
+      "id": "77db1f6d-520d-4d7e-80c6-ac3cce52c40e",
+      "name": "Redis Chat Memory",
+      "credentials": {
+        "redis": {
+          "id": "KceZM3ys8AaSxa4I",
+          "name": "Redis account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Prepare response text for LINE\ntry {\n  const input = $input.item.json;\n  const initialData = $('Initial Parse').item.json;\n  \n  let responseText = '';\n  \n  // Check for AI Agent output format\n  if (input.output && typeof input.output === 'string') {\n    responseText = input.output;\n  }\n  // Fallback\n  else {\n    responseText = '抱歉，我無法生成回應。請再試一次。';\n  }\n\n  // Truncate if too long (LINE has a 5000 character limit)\n  const MAX_LENGTH = 4500;\n  if (responseText.length > MAX_LENGTH) {\n    responseText = responseText.substring(0, MAX_LENGTH) + '...\\n\\n(訊息過長，已截斷)';\n  }\n\n  return {\n    json: {\n      responseText: responseText,\n      replyToken: initialData.replyToken,\n      isError: false\n    }\n  };\n} catch (error) {\n  console.error('Error in Format Response:', error);\n  return {\n    json: {\n      responseText: '系統發生錯誤，請稍後再試。',\n      replyToken: $('Initial Parse').item?.json?.replyToken,\n      isError: true\n    }\n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13616,
+        2624
+      ],
+      "id": "3d4c1040-5123-4960-bc7e-ca8723947550",
+      "name": "Format Response for LINE"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Handle AI Agent errors\ntry {\n  const errorInput = $input.item.json;\n  const initialData = $('Initial Parse').item.json;\n\n  let errorMessage = '抱歉，我現在遇到一些問題。請稍後再試。';\n  let errorType = 'unknown';\n\n  if (errorInput.error) {\n    const error = errorInput.error;\n    \n    if (error.response) {\n      const statusCode = error.response.statusCode;\n      \n      if (statusCode === 429) {\n        errorMessage = '系統目前使用量較大，請稍後再試。';\n        errorType = 'rate_limit';\n      } else if (statusCode === 401 || statusCode === 403) {\n        errorMessage = '系統設定有誤，請聯絡管理員。';\n        errorType = 'auth_error';\n      } else if (statusCode >= 500) {\n        errorMessage = 'AI服務暫時無法使用，請稍後再試。';\n        errorType = 'server_error';\n      } else if (statusCode === 400) {\n        errorMessage = '訊息格式有誤，請重新輸入。';\n        errorType = 'bad_request';\n      }\n    } else if (error.code === 'ETIMEDOUT' || error.code === 'ESOCKETTIMEDOUT') {\n      errorMessage = '請求超時，請稍後再試。';\n      errorType = 'timeout';\n    }\n  }\n\n  console.error(`AI Agent Error - Type: ${errorType}, Error:`, errorInput.error);\n\n  return {\n    json: {\n      replyToken: initialData?.replyToken,\n      responseText: errorMessage,\n      errorType: errorType,\n      isError: true\n    }\n  };\n} catch (error) {\n  console.error('Error in Error Handler:', error);\n  return {\n    json: {\n      replyToken: $('Initial Parse').item?.json?.replyToken,\n      responseText: '系統發生錯誤，請稍後再試。',\n      errorType: 'handler_error',\n      isError: true\n    }\n  };\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        13616,
+        2848
+      ],
+      "id": "f4531ae5-c589-402a-b06b-e7219984c98e",
+      "name": "Handle Error"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.line.me/v2/bot/message/reply",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"replyToken\": \"{{ $json.replyToken }}\",\n  \"messages\": [\n    {\n      \"type\": \"text\",\n      \"text\": {{ JSON.stringify($json.responseText) }}\n    }\n  ]\n}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        13952,
+        2624
+      ],
+      "id": "ad898e19-ed36-4388-8ba8-3f6ffe167c67",
+      "name": "Send back to Line Bot",
+      "credentials": {
+        "httpBearerAuth": {
+          "id": "wDjQAvDrfCI6xKdA",
+          "name": "Line Channel Token"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "description": "當用戶詢問天氣、氣溫、降雨、氣候等相關問題時呼叫此工具。\n可查詢全球任何地點的即時天氣和未來預報。\n\n支援格式：\n- 台灣城市名稱：台北、高雄、台中等\n- 國際城市：Tokyo、London、New York 或 東京、倫敦、紐約\n- 任何地點名稱：會自動進行地理編碼查詢\n\n提供資訊：\n- 目前溫度、體感溫度、天氣狀況\n- 濕度、風速、氣壓、紫外線指數\n- 未來 6 小時逐時預報\n- 未來 5 天每日預報\n- 降雨機率",
+        "workflowId": {
+          "__rl": true,
+          "value": "KoxGKHtAH5p6f3Ql",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/KoxGKHtAH5p6f3Ql",
+          "cachedResultName": "Weather Lookup"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lat": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lat', ``, 'string') }}",
+            "lon": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('lon', ``, 'string') }}",
+            "location": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('location', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "lat",
+              "displayName": "lat",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "lon",
+              "displayName": "lon",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "location",
+              "displayName": "location",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        12768,
+        3232
+      ],
+      "id": "08116224-d2a9-4e13-bb9f-c410fd33c95c",
+      "name": "Weather Lookup"
+    },
+    {
+      "parameters": {
+        "description": "當用戶想要記錄消費或支出時呼叫此工具。\n將用戶描述的消費內容解析後寫入 Google Sheet 帳本。\n\n重要：Date 欄位決定寫入哪個月份的帳本（例如 2026/3/15 會寫入「2026 3月 開支清單」），因此必須根據用戶描述的消費時間準確填入，未指定則用今天日期。\n\n欄位說明：\n- Title：消費項目名稱或店名\n- Date：消費日期，格式 YYYY/M/D（此欄位決定寫入哪個月的帳本，必填）\n- Currency：幣值，只能是 TWD / JPY / USD，未指定預設 TWD\n- Amount：金額，純數字不含符號\n- Category：分類，只能從以下選擇：外食、交通、生活開銷、娛樂、每月固定支出、投資學習、其他\n- Comment：備註說明，可以為空",
+        "workflowId": {
+          "__rl": true,
+          "value": "eiN6MVGVBXtsxHcm",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/eiN6MVGVBXtsxHcm",
+          "cachedResultName": "Write Expense Sheet"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Amount": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Amount', ``, 'number') }}",
+            "Title": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Title', ``, 'string') }}",
+            "Date": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Date', ``, 'string') }}",
+            "Currency": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Currency', `TWD / JPY / USD`, 'string') }}",
+            "Category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Category', `外食/交通/生活開銷/娛樂/每月固定支出/投資學習/其他`, 'string') }}",
+            "Comment": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Comment', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Title",
+              "displayName": "Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Currency",
+              "displayName": "Currency",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Amount",
+              "displayName": "Amount",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "number",
+              "removed": false
+            },
+            {
+              "id": "Category",
+              "displayName": "Category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            },
+            {
+              "id": "Comment",
+              "displayName": "Comment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string",
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        12928,
+        3232
+      ],
+      "id": "50ef2305-034c-46bc-9a31-c32e9a7bd09c",
+      "name": "Write to Google Sheet Accounting"
+    },
+    {
+      "parameters": {
+        "description": "當讀取 Google Sheets 開銷記錄時，每一行包含以下欄位：\n- 項目 (A欄)\n- 日期 (B欄) \n- 幣值 (C欄)\n- 金額 (D欄)\n- 分類 (E欄) - 可能的值：「生活開銷」、「外食」、「交通」等\n- 註記 (F欄)\n\n工具使用範例：\n- \"二月我花在外食上的費用有多少？\" → read_expense_sheet(year=2025, month=2, queryType=\"details\", category=\"外食\")\n- \"幫我看一月的開支總結\" → read_expense_sheet(year=2025, month=1, queryType=\"summary\")\n- \"這個月娛樂花了多少？\" → read_expense_sheet(year=當前年, month=當前月, queryType=\"details\", category=\"娛樂\")\n\n注意事項：\n1. 從用戶問題中提取年份和月份，如果沒有指定則使用當前時間\n2. 判斷用戶是要看細項(details)還是總結(summary)\n3. 如果用戶提到特定類別（外食、交通、娛樂等），要帶入 category 參數",
+        "workflowId": {
+          "__rl": true,
+          "value": "cQiKWswNrSR08KtJ",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/cQiKWswNrSR08KtJ",
+          "cachedResultName": "Read Expense Sheet"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "year": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('year', ``, 'string') }}",
+            "month": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('month', ``, 'string') }}",
+            "queryType": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('queryType', ``, 'string') }}",
+            "category": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('category', ``, 'string') }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "year",
+              "displayName": "year",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "month",
+              "displayName": "month",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "queryType",
+              "displayName": "queryType",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            },
+            {
+              "id": "category",
+              "displayName": "category",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "canBeUsedToMatch": true,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        13088,
+        3232
+      ],
+      "id": "a2fe8820-212a-4140-b4f5-912d00cd63e8",
+      "name": "Read Google Sheet Accounting"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Initial Parse",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initial Parse": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Format Response for LINE",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response for LINE": {
+      "main": [
+        [
+          {
+            "node": "Send back to Line Bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Error": {
+      "main": [
+        [
+          {
+            "node": "Send back to Line Bot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anthropic Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Redis Chat Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weather Lookup": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write to Google Sheet Accounting": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Google Sheet Accounting": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "saveDataSuccessExecution": "all"
+  },
+  "versionId": "600ccf80-fe8b-49ab-9083-9a0d6ce348c4",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2e0b3c0892b8587b839d98e055437401745adbb0c0f91de7bbcca8dbb1d803b0"
+  },
+  "id": "HItnbCIwqkOXj3DekxY0x",
+  "tags": []
+}

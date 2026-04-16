@@ -1,0 +1,195 @@
+{
+  "name": "Write Expense Sheet",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "Title"
+            },
+            {
+              "name": "Date"
+            },
+            {
+              "name": "Currency"
+            },
+            {
+              "name": "Amount",
+              "type": "number"
+            },
+            {
+              "name": "Category"
+            },
+            {
+              "name": "Comment"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "13b9652c-a0ff-488a-8613-cd476edef6d7",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resolve which Google Sheet to write to based on the expense date.\n// Expects Date in YYYY/M/D format (e.g. \"2026/3/15\").\n// Reads spreadsheet ID from env var: EXPENSE_SHEET_{YEAR}_{MM}\n\nconst dateStr = $json.Date || '';\nlet year, month;\n\nif (dateStr) {\n  const parts = dateStr.split('/');\n  year = parseInt(parts[0]);\n  month = parseInt(parts[1]);\n}\n\n// Fall back to current date if parsing failed\nif (!year || !month || isNaN(year) || isNaN(month)) {\n  const now = new Date();\n  year = now.getFullYear();\n  month = now.getMonth() + 1;\n}\n\nconst envKey = `EXPENSE_SHEET_${year}_${String(month).padStart(2, '0')}`;\nconst spreadsheetId = process.env[envKey];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（環境變數 ${envKey} 未設定）`);\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    spreadsheetId,\n    documentName: `${year} ${month}月 開支清單`\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "b7e4a2f1-c3d8-4e90-a561-f92b83c50d17",
+      "name": "Resolve Sheet"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "={{ $json.spreadsheetId }}",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "開支一覽",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "項目": "={{ $json.Title }}",
+            "日期": "={{ $json.Date }}",
+            "幣值": "={{ $json.Currency }}",
+            "金額": "={{ $json.Amount }}",
+            "分類": "={{ $json.Category }}",
+            "註記": "={{ $json.Comment }}"
+          },
+          "matchingColumns": [
+            "項目"
+          ],
+          "schema": [
+            {
+              "id": "項目",
+              "displayName": "項目",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "日期",
+              "displayName": "日期",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "幣值",
+              "displayName": "幣值",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "金額",
+              "displayName": "金額",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "分類",
+              "displayName": "分類",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "註記",
+              "displayName": "註記",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        440,
+        0
+      ],
+      "id": "d5f3cb6f-7756-4e13-b7c0-72cf597cb43f",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleApi": {
+          "id": "GXaLSry3U19qxGjy",
+          "name": "Google Service Account account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Resolve Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Sheet": {
+      "main": [
+        [
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "3a515291-37f2-4a51-9f48-778c39281fbf",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2e0b3c0892b8587b839d98e055437401745adbb0c0f91de7bbcca8dbb1d803b0"
+  },
+  "id": "eiN6MVGVBXtsxHcm",
+  "tags": []
+}

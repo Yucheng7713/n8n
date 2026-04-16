@@ -1,0 +1,349 @@
+{
+  "name": "Calendar Tool",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute_workflow_trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 解析輸入參數\nconst input = $input.item.json;\n\n// 預設 calendar_id\nconst calendarId = input.calendar_id || process.env.DEFAULT_CALENDAR_ID || 'primary';\n\n// 判斷 action\nconst action = (input.action || '').toLowerCase();\n\nreturn {\n  action,\n  calendarId,\n  parameters: input.parameters || {},\n  rawInput: input\n};"
+      },
+      "id": "parse_input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": ""
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "list",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "list"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": ""
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": ""
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "update"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": false,
+                  "leftValue": ""
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.action }}",
+                    "rightValue": "delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "delete"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch_action",
+      "name": "Switch Action",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "returnAll": false,
+        "limit": "={{ $json.parameters.maxResults || 10 }}",
+        "options": {
+          "timeMin": "={{ $json.parameters.timeMin || new Date().toISOString() }}",
+          "timeMax": "={{ $json.parameters.timeMax || '' }}",
+          "singleEvents": true,
+          "orderBy": "startTime"
+        }
+      },
+      "id": "list_events",
+      "name": "List Events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [920, 200],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "start": "={{ $json.parameters.event.start.dateTime || $json.parameters.event.start.date }}",
+        "end": "={{ $json.parameters.event.end.dateTime || $json.parameters.event.end.date }}",
+        "summary": "={{ $json.parameters.event.summary }}",
+        "additionalFields": {
+          "description": "={{ $json.parameters.event.description || '' }}",
+          "location": "={{ $json.parameters.event.location || '' }}",
+          "sendUpdates": "none"
+        }
+      },
+      "id": "create_event",
+      "name": "Create Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [920, 340],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.parameters.eventId }}",
+        "start": "={{ $json.parameters.event.start.dateTime || $json.parameters.event.start.date }}",
+        "end": "={{ $json.parameters.event.end.dateTime || $json.parameters.event.end.date }}",
+        "updateFields": {
+          "summary": "={{ $json.parameters.event.summary }}",
+          "description": "={{ $json.parameters.event.description || '' }}",
+          "location": "={{ $json.parameters.event.location || '' }}",
+          "sendUpdates": "none"
+        }
+      },
+      "id": "update_event",
+      "name": "Update Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [920, 480],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendarId": {
+          "__rl": true,
+          "value": "={{ $json.calendarId }}",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.parameters.eventId }}",
+        "options": {
+          "sendUpdates": "none"
+        }
+      },
+      "id": "delete_event",
+      "name": "Delete Event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 2,
+      "position": [920, 620],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "REPLACE_WITH_YOUR_CREDENTIAL_ID",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// 格式化回應\nconst items = $input.all();\n\n// 如果是 list 操作，格式化事件列表\nif (items[0].json.action === 'list' || Array.isArray(items)) {\n  const events = items.map(item => ({\n    id: item.json.id,\n    summary: item.json.summary,\n    start: item.json.start,\n    end: item.json.end,\n    description: item.json.description || '',\n    location: item.json.location || '',\n    status: item.json.status\n  }));\n  \n  return {\n    success: true,\n    action: 'list',\n    count: events.length,\n    message: `查詢到 ${events.length} 筆行程`,\n    events: events\n  };\n}\n\n// 其他操作的回應\nconst firstItem = items[0].json;\nreturn {\n  success: true,\n  action: firstItem.action || 'unknown',\n  message: '操作成功',\n  event: {\n    id: firstItem.id,\n    summary: firstItem.summary,\n    start: firstItem.start,\n    end: firstItem.end,\n    status: firstItem.status\n  }\n};"
+      },
+      "id": "format_response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1140, 400]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Switch Action",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch Action": {
+      "main": [
+        [
+          {
+            "node": "List Events",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Create Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Events": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Event": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Event": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete Event": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "tags": []
+}

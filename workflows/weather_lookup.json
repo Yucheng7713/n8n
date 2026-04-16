@@ -1,0 +1,275 @@
+{
+  "name": "Weather Lookup",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1712,
+        -32
+      ],
+      "id": "11a83d49-a877-4efa-ab2c-bf3da953cb8c",
+      "name": "Execute Workflow Trigger"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 判斷 AI 傳入的參數類型並決定處理方式\nconst input = $input.item.json;\n\n// 台灣主要城市座標對照表\nconst taiwanCities = {\n  '台北': { lat: 25.0330, lon: 121.5654 },\n  '新北': { lat: 25.0122, lon: 121.4654 },\n  '桃園': { lat: 24.9936, lon: 121.3010 },\n  '台中': { lat: 24.1477, lon: 120.6736 },\n  '台南': { lat: 22.9997, lon: 120.2270 },\n  '高雄': { lat: 22.6273, lon: 120.3014 },\n  '基隆': { lat: 25.1276, lon: 121.7392 },\n  '新竹': { lat: 24.8138, lon: 120.9675 },\n  '嘉義': { lat: 23.4800, lon: 120.4491 },\n  '宜蘭': { lat: 24.7021, lon: 121.7378 },\n  '花蓮': { lat: 23.9871, lon: 121.6015 },\n  '台東': { lat: 22.7583, lon: 121.1444 }\n};\n\nlet result = {\n  needGeocoding: false,\n  lat: null,\n  lon: null,\n  locationName: '',\n  originalLocation: '',\n  exclude: input.exclude || 'minutely,alerts'\n};\n\n// 情況 1: AI 直接提供經緯度\nif (input.lat && input.lon) {\n  result.needGeocoding = false;\n  result.lat = parseFloat(input.lat);\n  result.lon = parseFloat(input.lon);\n  result.locationName = input.locationName || '指定位置';\n  result.originalLocation = input.locationName || `${result.lat}, ${result.lon}`;\n}\n// 情況 2: AI 提供城市名稱\nelse if (input.city || input.location) {\n  const cityInput = input.city || input.location;\n  result.originalLocation = cityInput;\n  \n  // 檢查是否為台灣預設城市\n  if (taiwanCities[cityInput]) {\n    result.needGeocoding = false;\n    result.lat = taiwanCities[cityInput].lat;\n    result.lon = taiwanCities[cityInput].lon;\n    result.locationName = cityInput;\n  } else {\n    // 需要 geocoding\n    result.needGeocoding = true;\n    result.locationName = cityInput;\n  }\n}\n// 情況 3: 沒有提供任何參數，預設台北\nelse {\n  result.needGeocoding = false;\n  result.lat = 25.0330;\n  result.lon = 121.5654;\n  result.locationName = '台北';\n  result.originalLocation = '台北';\n}\n\nreturn { json: result };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1504,
+        -32
+      ],
+      "id": "7f334a9a-11cd-4f59-a5ac-eda5642ed418",
+      "name": "Parse Input"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "556db6fc-c143-47c8-b4df-46b97ec2c0ba",
+              "leftValue": "={{ $json.needGeocoding }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        -32
+      ],
+      "id": "32a87fc1-2f96-4c27-8b51-9b427e7a5bfe",
+      "name": "Need Geocoding?"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.openweathermap.org/geo/1.0/direct",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $('Parse Input').item.json.locationName }}"
+            },
+            {
+              "name": "limit",
+              "value": "1"
+            },
+            {
+              "name": "appid",
+              "value": "73b8cd48cdd7b9592ec192949603c0cc"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1056,
+        -144
+      ],
+      "id": "ad42790b-488f-440e-89fa-4c190b81087e",
+      "name": "Geocoding API"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 解析 geocoding 結果\nconst geocodeResult = $input.item.json;\nconst parseInput = $('Parse Input').item.json;\n\nif (!geocodeResult || geocodeResult.length === 0) {\n  throw new Error(`找不到地點：${parseInput.locationName}`);\n}\n\nconst location = geocodeResult[0];\n\nreturn {\n  json: {\n    lat: location.lat,\n    lon: location.lon,\n    locationName: location.local_names?.zh || location.name || parseInput.locationName,\n    originalLocation: parseInput.originalLocation,\n    exclude: parseInput.exclude\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -832,
+        -144
+      ],
+      "id": "39e17fca-c717-41ea-86f6-cd95e6323712",
+      "name": "Parse Geocoding Result"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -592,
+        0
+      ],
+      "id": "63c8a6a8-f85e-478f-81d4-392021190126",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.openweathermap.org/data/3.0/onecall",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "lat",
+              "value": "={{ $json.lat }}"
+            },
+            {
+              "name": "lon",
+              "value": "={{ $json.lon }}"
+            },
+            {
+              "name": "exclude",
+              "value": "={{ $json.exclude }}"
+            },
+            {
+              "name": "appid",
+              "value": "73b8cd48cdd7b9592ec192949603c0cc"
+            },
+            {
+              "name": "units",
+              "value": "metric"
+            },
+            {
+              "name": "lang",
+              "value": "zh_tw"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "9b7faf9e-f4a3-4a67-838f-d8272ca59c83",
+      "name": "Call OpenWeather API"
+    },
+    {
+      "parameters": {
+        "jsCode": "// 格式化天氣資料為繁體中文回應\nconst weatherData = $input.item.json;\nconst locationInfo = $('Merge').item.json;\nconst cityName = locationInfo.locationName;\n\n// 天氣狀況中文對照\nconst weatherDesc = {\n  'Clear': '晴朗',\n  'Clouds': '多雲',\n  'Rain': '雨',\n  'Drizzle': '毛毛雨',\n  'Thunderstorm': '雷雨',\n  'Snow': '雪',\n  'Mist': '薄霧',\n  'Fog': '霧',\n  'Haze': '霾'\n};\n\nif (!weatherData.current) {\n  return { \n    json: { \n      output: `無法取得 ${cityName} 的天氣資料，請稍後再試。` \n    } \n  };\n}\n\nconst current = weatherData.current;\nconst temp = Math.round(current.temp);\nconst feelsLike = Math.round(current.feels_like);\nconst humidity = current.humidity;\nconst windSpeed = (current.wind_speed * 3.6).toFixed(1); // 轉換為 km/h\nconst weather = current.weather[0];\nconst mainWeather = weatherDesc[weather.main] || weather.main;\nconst uvIndex = current.uvi;\n\n// 建立基本回應\nlet response = `📍 ${cityName} 目前天氣\\n\\n`;\nresponse += `🌡️ 溫度：${temp}°C（體感 ${feelsLike}°C）\\n`;\nresponse += `☁️ 天氣：${mainWeather}\\n`;\nresponse += `💧 濕度：${humidity}%\\n`;\nresponse += `💨 風速：${windSpeed} km/h\\n`;\nresponse += `☀️ 紫外線指數：${uvIndex}\\n`;\n\n// 降雨機率（如果有）\nif (current.pop) {\n  response += `🌧️ 降雨機率：${Math.round(current.pop * 100)}%\\n`;\n}\n\n// 未來幾小時預報\nif (weatherData.hourly && weatherData.hourly.length > 0) {\n  response += `\\n⏰ 未來幾小時：\\n`;\n  for (let i = 1; i <= 3 && i < weatherData.hourly.length; i++) {\n    const hour = weatherData.hourly[i];\n    const time = new Date(hour.dt * 1000);\n    const hourTemp = Math.round(hour.temp);\n    const hourWeather = weatherDesc[hour.weather[0].main] || hour.weather[0].main;\n    const hourPop = hour.pop ? ` (降雨 ${Math.round(hour.pop * 100)}%)` : '';\n    response += `  ${time.getHours()}:00 - ${hourTemp}°C ${hourWeather}${hourPop}\\n`;\n  }\n}\n\n// 未來幾天預報\nif (weatherData.daily && weatherData.daily.length > 1) {\n  response += `\\n📅 未來幾天：\\n`;\n  for (let i = 1; i <= 3 && i < weatherData.daily.length; i++) {\n    const day = weatherData.daily[i];\n    const date = new Date(day.dt * 1000);\n    const minTemp = Math.round(day.temp.min);\n    const maxTemp = Math.round(day.temp.max);\n    const dayWeather = weatherDesc[day.weather[0].main] || day.weather[0].main;\n    const dayPop = day.pop ? ` (降雨 ${Math.round(day.pop * 100)}%)` : '';\n    response += `  ${date.getMonth()+1}/${date.getDate()} - ${minTemp}~${maxTemp}°C ${dayWeather}${dayPop}\\n`;\n  }\n}\n\nreturn { json: { output: response } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -176,
+        0
+      ],
+      "id": "05a2846a-69e4-462a-a6d3-6b7af406c7d5",
+      "name": "Format Weather Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Parse Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Input": {
+      "main": [
+        [
+          {
+            "node": "Need Geocoding?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Need Geocoding?": {
+      "main": [
+        [
+          {
+            "node": "Geocoding API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Geocoding API": {
+      "main": [
+        [
+          {
+            "node": "Parse Geocoding Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Geocoding Result": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Call OpenWeather API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenWeather API": {
+      "main": [
+        [
+          {
+            "node": "Format Weather Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "8df3d2ae-4cdb-4692-973d-01f8f8e0fabb",
+  "meta": {
+    "instanceId": "2e0b3c0892b8587b839d98e055437401745adbb0c0f91de7bbcca8dbb1d803b0"
+  },
+  "id": "KoxGKHtAH5p6f3Ql",
+  "tags": []
+}
