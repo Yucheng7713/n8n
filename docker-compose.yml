@@ -38,34 +38,34 @@ services:
       # Webhook
       - WEBHOOK_URL=https://${N8N_EXTERNAL_HOST}/
 
-      # AI Agent 優化
+      # AI Agent optimization
       - EXECUTIONS_PROCESS=main
-      - EXECUTIONS_TIMEOUT=300              # 5分鐘超時but 
-      - EXECUTIONS_TIMEOUT_MAX=600          # 最大10分鐘
+      - EXECUTIONS_TIMEOUT=300              # Set timeout to 5 min 
+      - EXECUTIONS_TIMEOUT_MAX=600          # Set max timeout to 10 min
       - EXECUTIONS_DATA_PRUNE=true
-      - EXECUTIONS_DATA_MAX_AGE=24          # 只保留1天
+      - EXECUTIONS_DATA_MAX_AGE=24          # Only keep data within 1-day for saving storage.
       - EXECUTIONS_DATA_SAVE_ON_ERROR=all
-      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none  # 成功不保存節省空間
+      - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none
       - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
       
       # Allow $env and process.env access in nodes/expressions
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
 
       # 嚴格限制
-      - N8N_PAYLOAD_SIZE_MAX=8              # 降至 8MB
+      - N8N_PAYLOAD_SIZE_MAX=8              # Reduce to 8MB
       - N8N_METRICS=false
       - N8N_DIAGNOSTICS_ENABLED=false
       - NODE_OPTIONS=--max-old-space-size=320
       
-      # 並發控制 (重要!)
-      - EXECUTIONS_CONCURRENCY_MAX=2        # 最多同時2個工作流
+      # Simultaneous control
+      - EXECUTIONS_CONCURRENCY_MAX=2        # At most 2 running workflows
       
       # Logging
-      - N8N_LOG_LEVEL=error                 # 只記錄錯誤
+      - N8N_LOG_LEVEL=error                 # Only keep error log
       - N8N_LOG_OUTPUT=console
       - N8N_USER_MANAGEMENT_DISABLED=true
 
-      # Queue mode (使用 Redis 作為 queue)
+      # Queue mode (Redis)
       - QUEUE_BULL_REDIS_HOST=redis
       - QUEUE_BULL_REDIS_PORT=6379
       - EXECUTIONS_MODE=regular
