@@ -1,0 +1,167 @@
+{
+  "name": "Read Expense Sheet",
+  "nodes": [
+    {
+      "parameters": {
+        "functionCode": "// 解析輸入參數\nconst year = $json.year || new Date().getFullYear();\nconst month = $json.month || new Date().getMonth() + 1;\nconst queryType = $json.queryType || 'details'; // 'details' 或 'summary'\nconst category = $json.category || null;\n\n// 建立 spreadsheet mapping\n// TODO: 之後可以改成從環境變數或 Redis 讀取\nconst sheetMappings = {\n  '2026-1': { id: process.env.EXPENSE_SHEET_2026_01 || '1WwTVhPS-sDxDBl98ZuleCyNP2vmCcV5zV4ZykvgLE0g' },\n  '2026-2': { id: process.env.EXPENSE_SHEET_2026_02 || '15FVJ81u0RsLCrVs3ZRxekxaPsjcAet9bUXe2zhcS3SE' },\n  '2026-3': { id: process.env.EXPENSE_SHEET_2026_03 || '17KNSH-qunxh0TFf_No-mAE1vr40QYcZ_qT75GoSJEqs' },\n  // 繼續添加其他月份...\n};\n\nconst key = `${year}-${month}`;\nconst config = sheetMappings[key];\n\nif (!config) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本`);\n}\n\n// 決定要讀取的 sheet 名稱\nconst sheetName = queryType === 'summary' ? '開支總結' : '開支一覽';\n\nreturn {\n  spreadsheetId: config.id,\n  sheetName: sheetName,\n  documentName: `${year} ${month}月 開支清單`,\n  category: category,\n  year: year,\n  month: month,\n  queryType: queryType\n};"
+      },
+      "name": "Parse and Route",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        96,
+        -272
+      ],
+      "id": "cd582d3d-9cbe-41f7-9038-c7af189ea0f4"
+    },
+    {
+      "parameters": {
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.spreadsheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "={{ $json.sheetName }}"
+        },
+        "options": {}
+      },
+      "name": "Read Google Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [
+        352,
+        -272
+      ],
+      "id": "cc25ddbf-f110-49a3-9f1a-fd490dd2fd6a",
+      "credentials": {
+        "googleApi": {
+          "id": "GXaLSry3U19qxGjy",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "// 處理讀取到的資料\nconst items = $input.all();\nconst category = $('Parse and Route').first().json.category;\nconst queryType = $('Parse and Route').first().json.queryType;\nconst year = $('Parse and Route').first().json.year;\nconst month = $('Parse and Route').first().json.month;\n\nlet result = [];\n\nif (queryType === 'details') {\n  // 處理「開支一覽」的資料\n  result = items.map(item => ({\n    日期: item.json.日期 || item.json['Date'],\n    項目: item.json.項目 || item.json['Item'],\n    分類: item.json.分類 || item.json['Category'],\n    金額: item.json.金額 || item.json['Amount'],\n    幣值: item.json.幣值 || item.json['Currency'] || 'TWD',\n    備註: item.json.備註 || item.json['Note'] || ''\n  }));\n  \n  // 如果有指定分類，進行篩選\n  if (category) {\n    result = result.filter(item => \n      item.分類 && item.分類.includes(category)\n    );\n  }\n  \n  // 計算總金額\n  const totalByCategory = {};\n  const totalByCurrency = {};\n  \n  result.forEach(item => {\n    const cat = item.分類 || '未分類';\n    const currency = item.幣值 || 'TWD';\n    const amount = parseFloat(item.金額) || 0;\n    \n    if (!totalByCategory[cat]) {\n      totalByCategory[cat] = {};\n    }\n    if (!totalByCategory[cat][currency]) {\n      totalByCategory[cat][currency] = 0;\n    }\n    totalByCategory[cat][currency] += amount;\n    \n    if (!totalByCurrency[currency]) {\n      totalByCurrency[currency] = 0;\n    }\n    totalByCurrency[currency] += amount;\n  });\n  \n  return [{\n    json: {\n      year: year,\n      month: month,\n      queryType: 'details',\n      category: category,\n      recordCount: result.length,\n      records: result,\n      totalByCategory: totalByCategory,\n      totalByCurrency: totalByCurrency\n    }\n  }];\n  \n} else {\n  // 處理「開支總結」的資料\n  result = items.map(item => ({\n    分類: item.json.分類 || item.json['Category'],\n    TWD: item.json.TWD || 0,\n    JPY: item.json.JPY || 0,\n    USD: item.json.USD || 0,\n    小計TWD: item.json['小計(TWD)'] || item.json['Subtotal (TWD)'] || 0\n  }));\n  \n  // 如果有指定分類，進行篩選\n  if (category) {\n    result = result.filter(item => \n      item.分類 && item.分類.includes(category)\n    );\n  }\n  \n  return [{\n    json: {\n      year: year,\n      month: month,\n      queryType: 'summary',\n      category: category,\n      summary: result\n    }\n  }];\n}"
+      },
+      "name": "Process Data",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [
+        624,
+        -272
+      ],
+      "id": "36b51cec-a34f-4234-8790-e6ba399b6d52"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json, null, 2) }}",
+        "options": {}
+      },
+      "name": "Return Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        896,
+        -272
+      ],
+      "id": "479464dc-4283-449f-acbc-120c7e490034"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "year"
+            },
+            {
+              "name": "month"
+            },
+            {
+              "name": "queryType"
+            },
+            {
+              "name": "category"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -112,
+        -272
+      ],
+      "id": "ba9e0699-e1a7-4003-a9c3-3d82cfc3ee45",
+      "name": "When Executed by Another Workflow"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Parse and Route": {
+      "main": [
+        [
+          {
+            "node": "Read Google Sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Google Sheet": {
+      "main": [
+        [
+          {
+            "node": "Process Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Data": {
+      "main": [
+        [
+          {
+            "node": "Return Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Parse and Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataSuccessExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "28a37e70-b267-41a4-a043-eb9748d42780",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "2e0b3c0892b8587b839d98e055437401745adbb0c0f91de7bbcca8dbb1d803b0"
+  },
+  "id": "cQiKWswNrSR08KtJ",
+  "tags": []
+}
