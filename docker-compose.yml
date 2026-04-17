@@ -40,7 +40,7 @@ services:
 
       # AI Agent 優化
       - EXECUTIONS_PROCESS=main
-      - EXECUTIONS_TIMEOUT=300              # 5分鐘超時
+      - EXECUTIONS_TIMEOUT=300              # 5分鐘超時but 
       - EXECUTIONS_TIMEOUT_MAX=600          # 最大10分鐘
       - EXECUTIONS_DATA_PRUNE=true
       - EXECUTIONS_DATA_MAX_AGE=24          # 只保留1天
@@ -48,6 +48,9 @@ services:
       - EXECUTIONS_DATA_SAVE_ON_SUCCESS=none  # 成功不保存節省空間
       - EXECUTIONS_DATA_SAVE_MANUAL_EXECUTIONS=false
       
+      # Allow $env and process.env access in nodes/expressions
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+
       # 嚴格限制
       - N8N_PAYLOAD_SIZE_MAX=8              # 降至 8MB
       - N8N_METRICS=false
