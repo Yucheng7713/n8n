@@ -38,36 +38,12 @@
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "f3a1c2e4-b5d6-7890-abcd-ef1234567891",
-              "name": "sheetsMapJson",
-              "value": "={{ $vars.EXPENSE_SHEETS_MAP }}",
-              "type": "string"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        220,
-        0
-      ],
-      "id": "f3a1c2e4-b5d6-7890-abcd-ef1234567891",
-      "name": "Load Sheet Map"
-    },
-    {
-      "parameters": {
-        "jsCode": "// Resolve which Google Sheet to write to based on the expense date.\n// Expects Date in YYYY/M/D format (e.g. \"2026/3/15\").\n// Reads spreadsheet ID from n8n Variable EXPENSE_SHEETS_MAP (JSON).\n// Format: {\"2026-01\": \"<sheet-id>\", \"2026-04\": \"<sheet-id>\", ...}\n\nconst dateStr = $json.Date || '';\nlet year, month;\n\nif (dateStr) {\n  const parts = dateStr.split('/');\n  year = parseInt(parts[0]);\n  month = parseInt(parts[1]);\n}\n\n// Fall back to current date if parsing failed\nif (!year || !month || isNaN(year) || isNaN(month)) {\n  const now = new Date();\n  year = now.getFullYear();\n  month = now.getMonth() + 1;\n}\n\nconst sheetsMap = JSON.parse($json.sheetsMapJson || '{}');\nconst key = `${year}-${String(month).padStart(2, '0')}`;\nconst spreadsheetId = sheetsMap[key];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（請在 n8n Variables 的 EXPENSE_SHEETS_MAP 中新增 \"${key}\" 的設定）`);\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    spreadsheetId,\n    documentName: `${year} ${month}月 開支清單`\n  }\n};"
+        "jsCode": "// Resolve which Google Sheet to write to based on the expense date.\n// Expects Date in YYYY/M/D format (e.g. \"2026/3/15\").\n// Reads spreadsheet IDs from env var EXPENSE_SHEETS_MAP (JSON string).\n// Format: {\"2026-01\": \"<sheet-id>\", \"2026-04\": \"<sheet-id>\", ...}\n\nconst dateStr = $json.Date || '';\nlet year, month;\n\nif (dateStr) {\n  const parts = dateStr.split('/');\n  year = parseInt(parts[0]);\n  month = parseInt(parts[1]);\n}\n\n// Fall back to current date if parsing failed\nif (!year || !month || isNaN(year) || isNaN(month)) {\n  const now = new Date();\n  year = now.getFullYear();\n  month = now.getMonth() + 1;\n}\n\nconst sheetsMap = JSON.parse(process.env.EXPENSE_SHEETS_MAP || '{}');\nconst key = `${year}-${String(month).padStart(2, '0')}`;\nconst spreadsheetId = sheetsMap[key];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（請在 .env 的 EXPENSE_SHEETS_MAP 中新增 \"${key}\" 的設定）`);\n}\n\nreturn {\n  json: {\n    ...$input.item.json,\n    spreadsheetId,\n    documentName: `${year} ${month}月 開支清單`\n  }\n};"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        440,
+        220,
         0
       ],
       "id": "b7e4a2f1-c3d8-4e90-a561-f92b83c50d17",
@@ -181,17 +157,6 @@
   "pinData": {},
   "connections": {
     "When Executed by Another Workflow": {
-      "main": [
-        [
-          {
-            "node": "Load Sheet Map",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Load Sheet Map": {
       "main": [
         [
           {
