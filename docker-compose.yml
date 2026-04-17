@@ -60,7 +60,7 @@ services:
       # Logging
       - N8N_LOG_LEVEL=error                 # 只記錄錯誤
       - N8N_LOG_OUTPUT=console
-      - N8N_USER_MANAGEMENT_DISABLED=true
+      - N8N_USER_MANAGEMENT_DISABLED=false
 
       # Queue mode (使用 Redis 作為 queue)
       - QUEUE_BULL_REDIS_HOST=redis
