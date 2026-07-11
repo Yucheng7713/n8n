@@ -65,6 +65,9 @@ services:
       - N8N_LOG_OUTPUT=console
       - N8N_USER_MANAGEMENT_DISABLED=true
 
+      # File access allowlist
+      - N8N_RESTRICT_FILE_ACCESS_TO=/home/node/.n8n-files;/home/node/.n8n/beyblade-tracking
+
       # Queue mode (Redis)
       # - QUEUE_BULL_REDIS_HOST=redis
       # - QUEUE_BULL_REDIS_PORT=6379
