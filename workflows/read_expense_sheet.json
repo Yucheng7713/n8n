@@ -3,7 +3,31 @@
   "nodes": [
     {
       "parameters": {
-        "functionCode": "// 解析輸入參數\nconst year = $json.year || new Date().getFullYear();\nconst month = $json.month || new Date().getMonth() + 1;\nconst queryType = $json.queryType || 'details'; // 'details' 或 'summary'\nconst category = $json.category || null;\n\n// 建立 spreadsheet mapping\n// TODO: 之後可以改成從環境變數或 Redis 讀取\nconst sheetMappings = {\n  '2026-1': { id: process.env.EXPENSE_SHEET_2026_01 || '1WwTVhPS-sDxDBl98ZuleCyNP2vmCcV5zV4ZykvgLE0g' },\n  '2026-2': { id: process.env.EXPENSE_SHEET_2026_02 || '15FVJ81u0RsLCrVs3ZRxekxaPsjcAet9bUXe2zhcS3SE' },\n  '2026-3': { id: process.env.EXPENSE_SHEET_2026_03 || '17KNSH-qunxh0TFf_No-mAE1vr40QYcZ_qT75GoSJEqs' },\n  // 繼續添加其他月份...\n};\n\nconst key = `${year}-${month}`;\nconst config = sheetMappings[key];\n\nif (!config) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本`);\n}\n\n// 決定要讀取的 sheet 名稱\nconst sheetName = queryType === 'summary' ? '開支總結' : '開支一覽';\n\nreturn {\n  spreadsheetId: config.id,\n  sheetName: sheetName,\n  documentName: `${year} ${month}月 開支清單`,\n  category: category,\n  year: year,\n  month: month,\n  queryType: queryType\n};"
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a9f3e1b2-c4d5-6789-abcd-ef0123456789",
+              "name": "sheetsMapJson",
+              "value": "={{ $env.EXPENSE_SHEETS_MAP }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "name": "Load Sheets Map",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        -272
+      ],
+      "id": "a9f3e1b2-c4d5-6789-abcd-ef0123456789"
+    },
+    {
+      "parameters": {
+        "functionCode": "// 解析輸入參數\nconst year = $json.year || new Date().getFullYear();\nconst month = $json.month || new Date().getMonth() + 1;\nconst queryType = $json.queryType || 'details'; // 'details' 或 'summary'\nconst category = $json.category || null;\n\nconst sheetsMap = JSON.parse($json.sheetsMapJson || '{}');\nconst key = `${year}-${String(month).padStart(2, '0')}`;\nconst spreadsheetId = sheetsMap[key];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（請在 .env 的 EXPENSE_SHEETS_MAP 中新增 \"${key}\" 的設定）`);\n}\n\n// 決定要讀取的 sheet 名稱\nconst sheetName = queryType === 'summary' ? '開支總結' : '開支一覽';\n\nreturn {\n  spreadsheetId: spreadsheetId,\n  sheetName: sheetName,\n  documentName: `${year} ${month}月 開支清單`,\n  category: category,\n  year: year,\n  month: month,\n  queryType: queryType\n};"
       },
       "name": "Parse and Route",
       "type": "n8n-nodes-base.function",
@@ -137,6 +161,17 @@
       ]
     },
     "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Load Sheets Map",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Sheets Map": {
       "main": [
         [
           {
