@@ -1,0 +1,226 @@
+{
+  "name": "Funbox 戰鬥陀螺上新追蹤",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-200, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 要監控的戰鬥陀螺分類代碼，之後要加分類直接在這裡加一行即可\nconst categories = [\n  { code: 'XIKBXA', name: '基本組' },\n  { code: 'XIKBXB', name: '強化組' },\n  { code: 'XIKBXC', name: '戰鬥組' },\n  { code: 'KB2X', name: '二代APP專屬組' },\n];\n\nreturn categories.map(c => ({\n  json: {\n    categoryCode: c.code,\n    categoryName: c.name,\n    url: `https://shop.funbox.com.tw/category_products/XI/KB/${c.code}.json?limit=50&page=1&sort_by=sell_from-desc`,\n  },\n}));"
+      },
+      "id": "category-list",
+      "name": "Category List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [20, 180]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "accept", "value": "application/json" },
+            { "name": "x-requested-with", "value": "XMLHttpRequest" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-request-funbox",
+      "name": "HTTP Request",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 把每個分類回傳的商品陣列攤平成單一商品清單，並附上庫存狀態判斷\nconst categoryItems = $('Category List').all();\nconst responseItems = $input.all();\n\nconst allProducts = [];\n\nresponseItems.forEach((item, idx) => {\n  const categoryCode = categoryItems[idx]?.json?.categoryCode ?? 'unknown';\n  const body = item.json;\n  const products = Array.isArray(body) ? body : (body?.data ?? []);\n\n  products.forEach(p => {\n    const variant = p.variants?.[0] ?? {};\n    const qty = variant.inventory_quantity ?? 0;\n    const isRedemptionItem = p.price >= 999999; // APP兌換類商品的佔位價格，不是真實售價\n\n    allProducts.push({\n      id: p.id,\n      title: p.title,\n      url: `https://shop.funbox.com.tw${p.url}`,\n      photo: p.photo ? (p.photo.startsWith('http') ? p.photo : `https:${p.photo}`) : null,\n      sku: variant.sku ?? null,\n      price: isRedemptionItem ? null : p.price,\n      inventory_quantity: qty,\n      stock_status: qty === 0 ? 'sold_out' : 'in_stock',\n      category: categoryCode,\n    });\n  });\n});\n\nreturn allProducts.map(p => ({ json: p }));"
+      },
+      "id": "flatten-products",
+      "name": "Flatten Products",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 180]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "fileSelector": "/home/node/.n8n/beyblade-tracking/funbox_seen.json",
+        "dataPropertyName": "data"
+      },
+      "id": "read-seen-file",
+      "name": "Read Seen File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [20, 440]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 合併「這次抓到的商品清單」跟「上次記錄的狀態」，算出新上架/補貨\nconst allItems = $input.all();\n\n// Read Seen File 節點來的那筆會帶 binary.data，商品資料不會\nconst seenFileItem = allItems.find(i => i.binary && i.binary.data);\nconst productItems = allItems.filter(i => !(i.binary && i.binary.data));\n\nlet seen = {};\nif (seenFileItem) {\n  const raw = Buffer.from(seenFileItem.binary.data.data, 'base64').toString('utf-8');\n  seen = raw.trim() ? JSON.parse(raw) : {};\n}\n\nconst currentItems = productItems.map(i => i.json);\nconst isFirstRun = Object.keys(seen).length === 0;\nconst changes = [];\n\nfor (const item of currentItems) {\n  const prev = seen[item.id];\n\n  if (!isFirstRun) {\n    if (!prev) {\n      changes.push({ ...item, changeType: 'new' });\n    } else if (prev.stock_status === 'sold_out' && item.stock_status !== 'sold_out') {\n      changes.push({ ...item, changeType: 'restocked' });\n    }\n  }\n\n  seen[item.id] = {\n    title: item.title,\n    url: item.url,\n    price: item.price,\n    stock_status: item.stock_status,\n    last_seen: new Date().toISOString(),\n  };\n}\n\nreturn [{\n  json: {\n    hasChanges: changes.length > 0,\n    changes,\n    updatedSeen: seen,\n    isFirstRun,\n  },\n}];"
+      },
+      "id": "diff-build-state",
+      "name": "Diff & Build State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hasChanges }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-changes",
+      "name": "IF Has Changes",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 把變化清單組成 LINE Flex Message 的 contents\nconst changes = $json.changes;\n\nconst bubbles = changes.slice(0, 12).map(c => {\n  const tag = c.changeType === 'new' ? '\ud83c\udd95 \u65b0\u4e0a\u67b6' : '\ud83d\udd01 \u88dc\u8ca8\u5230\u8ca8';\n  const priceText = c.price ? `NT$ ${c.price}` : '\u8acb\u81f3\u5546\u54c1\u9801\u67e5\u770b\u50f9\u683c';\n\n  return {\n    type: 'bubble',\n    ...(c.photo && {\n      hero: {\n        type: 'image',\n        url: c.photo,\n        size: 'full',\n        aspectRatio: '1:1',\n        aspectMode: 'cover',\n      },\n    }),\n    body: {\n      type: 'box',\n      layout: 'vertical',\n      contents: [\n        { type: 'text', text: tag, weight: 'bold', color: '#d60000', size: 'sm' },\n        { type: 'text', text: c.title, wrap: true, weight: 'bold', size: 'md', margin: 'md' },\n        { type: 'text', text: priceText, size: 'sm', color: '#555555', margin: 'sm' },\n      ],\n    },\n    footer: {\n      type: 'box',\n      layout: 'vertical',\n      contents: [\n        { type: 'button', style: 'primary', action: { type: 'uri', label: '\u67e5\u770b\u5546\u54c1', uri: c.url } },\n      ],\n    },\n  };\n});\n\nconst altText = changes.length === 1\n  ? `${changes[0].changeType === 'new' ? '\u65b0\u4e0a\u67b6' : '\u88dc\u8ca8'}\uff1a${changes[0].title}`\n  : `\u9640\u87ba\u8ffd\u8e64\uff1a${changes.length} \u9805\u5546\u54c1\u66f4\u65b0`;\n\nreturn [{\n  json: {\n    altText,\n    contents: changes.length === 1 ? bubbles[0] : { type: 'carousel', contents: bubbles },\n  },\n}];"
+      },
+      "id": "build-line-message",
+      "name": "Build LINE Flex Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 180]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.line.me/v2/bot/message/push",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.LINE_CHANNEL_ACCESS_TOKEN }}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"{{ $env.LINE_USER_ID }}\",\n  \"messages\": [\n    {\n      \"type\": \"flex\",\n      \"altText\": {{ JSON.stringify($json.altText) }},\n      \"contents\": {{ JSON.stringify($json.contents) }}\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "line-push",
+      "name": "LINE Push",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 180]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 把更新後的 seen 狀態轉成 binary，準備寫回檔案\nconst seenJson = JSON.stringify($json.updatedSeen, null, 2);\nconst buffer = Buffer.from(seenJson, 'utf-8');\n\nreturn [{\n  json: {},\n  binary: {\n    data: {\n      data: buffer.toString('base64'),\n      mimeType: 'application/json',\n      fileName: 'funbox_seen.json',\n    },\n  },\n}];"
+      },
+      "id": "prepare-write",
+      "name": "Prepare Seen File Write",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/home/node/.n8n/beyblade-tracking/funbox_seen.json",
+        "dataPropertyName": "data"
+      },
+      "id": "write-seen-file",
+      "name": "Write Seen File",
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [1340, 420]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          { "node": "Category List", "type": "main", "index": 0 },
+          { "node": "Read Seen File", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Category List": {
+      "main": [
+        [{ "node": "HTTP Request", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [{ "node": "Flatten Products", "type": "main", "index": 0 }]
+      ]
+    },
+    "Flatten Products": {
+      "main": [
+        [{ "node": "Diff & Build State", "type": "main", "index": 0 }]
+      ]
+    },
+    "Read Seen File": {
+      "main": [
+        [{ "node": "Diff & Build State", "type": "main", "index": 0 }]
+      ]
+    },
+    "Diff & Build State": {
+      "main": [
+        [{ "node": "IF Has Changes", "type": "main", "index": 0 }]
+      ]
+    },
+    "IF Has Changes": {
+      "main": [
+        [
+          { "node": "Build LINE Flex Message", "type": "main", "index": 0 },
+          { "node": "Prepare Seen File Write", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Prepare Seen File Write", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Build LINE Flex Message": {
+      "main": [
+        [{ "node": "LINE Push", "type": "main", "index": 0 }]
+      ]
+    },
+    "Prepare Seen File Write": {
+      "main": [
+        [{ "node": "Write Seen File", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
