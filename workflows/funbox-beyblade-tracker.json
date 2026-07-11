@@ -131,7 +131,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"to\": \"{{ $env.LINE_USER_ID }}\",\n  \"messages\": [\n    {\n      \"type\": \"flex\",\n      \"altText\": {{ JSON.stringify($json.altText) }},\n      \"contents\": {{ JSON.stringify($json.contents) }}\n    }\n  ]\n}",
+        "jsonBody": "={\n  \"to\": \"{{ $env.LINE_USER_ID_STEVEN }}\",\n  \"messages\": [\n    {\n      \"type\": \"flex\",\n      \"altText\": {{ JSON.stringify($json.altText) }},\n      \"contents\": {{ JSON.stringify($json.contents) }}\n    }\n  ]\n}",
         "options": {}
       },
       "id": "line-push",

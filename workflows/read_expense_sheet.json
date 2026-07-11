@@ -3,6 +3,23 @@
   "nodes": [
     {
       "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "year" },
+            { "name": "month" },
+            { "name": "queryType" },
+            { "name": "category" }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [-112, -272],
+      "id": "ba9e0699-e1a7-4003-a9c3-3d82cfc3ee45",
+      "name": "When Executed by Another Workflow"
+    },
+    {
+      "parameters": {
         "assignments": {
           "assignments": [
             {
@@ -19,24 +36,48 @@
       "name": "Load Sheets Map",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
-      "position": [
-        0,
-        -272
-      ],
+      "position": [96, -272],
       "id": "a9f3e1b2-c4d5-6789-abcd-ef0123456789"
     },
     {
       "parameters": {
-        "functionCode": "// 解析輸入參數\nconst year = $json.year || new Date().getFullYear();\nconst month = $json.month || new Date().getMonth() + 1;\nconst queryType = $json.queryType || 'details'; // 'details' 或 'summary'\nconst category = $json.category || null;\n\nconst sheetsMap = JSON.parse($json.sheetsMapJson || '{}');\nconst key = `${year}-${String(month).padStart(2, '0')}`;\nconst spreadsheetId = sheetsMap[key];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（請在 .env 的 EXPENSE_SHEETS_MAP 中新增 \"${key}\" 的設定）`);\n}\n\n// 決定要讀取的 sheet 名稱\nconst sheetName = queryType === 'summary' ? '開支總結' : '開支一覽';\n\nreturn {\n  spreadsheetId: spreadsheetId,\n  sheetName: sheetName,\n  documentName: `${year} ${month}月 開支清單`,\n  category: category,\n  year: year,\n  month: month,\n  queryType: queryType\n};"
+        "functionCode": "const year = $json.year || new Date().getFullYear();\nconst month = $json.month || new Date().getMonth() + 1;\nconst queryType = $json.queryType || 'details';\nconst category = $json.category || null;\n\nconst sheetsMap = JSON.parse($json.sheetsMapJson || '{}');\nconst key = `${year}-${String(month).padStart(2, '0')}`;\nconst spreadsheetId = sheetsMap[key];\n\nif (!spreadsheetId) {\n  throw new Error(`找不到 ${year} 年 ${month} 月的帳本（請在 .env 的 EXPENSE_SHEETS_MAP 中新增 \"${key}\" 的設定）`);\n}\n\nreturn {\n  spreadsheetId: spreadsheetId,\n  documentName: `${year} ${month}月 開支清單`,\n  category: category,\n  year: year,\n  month: month,\n  queryType: queryType\n};"
       },
       "name": "Parse and Route",
       "type": "n8n-nodes-base.function",
       "typeVersion": 1,
-      "position": [
-        96,
-        -272
-      ],
+      "position": [304, -272],
       "id": "cd582d3d-9cbe-41f7-9038-c7af189ea0f4"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "qtype-check",
+              "leftValue": "={{ $json.queryType }}",
+              "rightValue": "details",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Is Details?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [512, -272],
+      "id": "b1c2d3e4-f5a6-7890-bcde-f12345678901"
     },
     {
       "parameters": {
@@ -49,18 +90,15 @@
         "sheetName": {
           "__rl": true,
           "mode": "name",
-          "value": "={{ $json.sheetName }}"
+          "value": "開支一覽"
         },
         "options": {}
       },
-      "name": "Read Google Sheet",
+      "name": "Read Details Sheet",
       "type": "n8n-nodes-base.googleSheets",
       "typeVersion": 4,
-      "position": [
-        352,
-        -272
-      ],
-      "id": "cc25ddbf-f110-49a3-9f1a-fd490dd2fd6a",
+      "position": [720, -144],
+      "id": "c2d3e4f5-a6b7-8901-cdef-234567890123",
       "credentials": {
         "googleApi": {
           "id": "GXaLSry3U19qxGjy",
@@ -70,16 +108,61 @@
     },
     {
       "parameters": {
-        "functionCode": "// 處理讀取到的資料\nconst items = $input.all();\nconst category = $('Parse and Route').first().json.category;\nconst queryType = $('Parse and Route').first().json.queryType;\nconst year = $('Parse and Route').first().json.year;\nconst month = $('Parse and Route').first().json.month;\n\nlet result = [];\n\nif (queryType === 'details') {\n  // 處理「開支一覽」的資料\n  result = items.map(item => ({\n    日期: item.json.日期 || item.json['Date'],\n    項目: item.json.項目 || item.json['Item'],\n    分類: item.json.分類 || item.json['Category'],\n    金額: item.json.金額 || item.json['Amount'],\n    幣值: item.json.幣值 || item.json['Currency'] || 'TWD',\n    備註: item.json.備註 || item.json['Note'] || ''\n  }));\n  \n  // 如果有指定分類，進行篩選\n  if (category) {\n    result = result.filter(item => \n      item.分類 && item.分類.includes(category)\n    );\n  }\n  \n  // 計算總金額\n  const totalByCategory = {};\n  const totalByCurrency = {};\n  \n  result.forEach(item => {\n    const cat = item.分類 || '未分類';\n    const currency = item.幣值 || 'TWD';\n    const amount = parseFloat(item.金額) || 0;\n    \n    if (!totalByCategory[cat]) {\n      totalByCategory[cat] = {};\n    }\n    if (!totalByCategory[cat][currency]) {\n      totalByCategory[cat][currency] = 0;\n    }\n    totalByCategory[cat][currency] += amount;\n    \n    if (!totalByCurrency[currency]) {\n      totalByCurrency[currency] = 0;\n    }\n    totalByCurrency[currency] += amount;\n  });\n  \n  return [{\n    json: {\n      year: year,\n      month: month,\n      queryType: 'details',\n      category: category,\n      recordCount: result.length,\n      records: result,\n      totalByCategory: totalByCategory,\n      totalByCurrency: totalByCurrency\n    }\n  }];\n  \n} else {\n  // 處理「開支總結」的資料\n  result = items.map(item => ({\n    分類: item.json.分類 || item.json['Category'],\n    TWD: item.json.TWD || 0,\n    JPY: item.json.JPY || 0,\n    USD: item.json.USD || 0,\n    小計TWD: item.json['小計(TWD)'] || item.json['Subtotal (TWD)'] || 0\n  }));\n  \n  // 如果有指定分類，進行篩選\n  if (category) {\n    result = result.filter(item => \n      item.分類 && item.分類.includes(category)\n    );\n  }\n  \n  return [{\n    json: {\n      year: year,\n      month: month,\n      queryType: 'summary',\n      category: category,\n      summary: result\n    }\n  }];\n}"
+        "authentication": "serviceAccount",
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.spreadsheetId }}"
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "name",
+          "value": "開支總結"
+        },
+        "options": {}
       },
-      "name": "Process Data",
-      "type": "n8n-nodes-base.function",
-      "typeVersion": 1,
-      "position": [
-        624,
-        -272
-      ],
-      "id": "36b51cec-a34f-4234-8790-e6ba399b6d52"
+      "name": "Read Summary Sheet",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [720, -400],
+      "id": "d3e4f5a6-b7c8-9012-defa-345678901234",
+      "credentials": {
+        "googleApi": {
+          "id": "GXaLSry3U19qxGjy",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst category = $('Parse and Route').first().json.category;\nconst year = $('Parse and Route').first().json.year;\nconst month = $('Parse and Route').first().json.month;\n\nlet result = items.map(item => ({\n  日期: item.json.日期 || item.json['Date'],\n  項目: item.json.項目 || item.json['Item'],\n  分類: item.json.分類 || item.json['Category'],\n  金額: item.json.金額 || item.json['Amount'],\n  幣值: item.json.幣值 || item.json['Currency'] || 'TWD',\n  備註: item.json.備註 || item.json['Note'] || ''\n}));\n\nif (category) {\n  result = result.filter(item => item.分類 && item.分類.includes(category));\n}\n\nconst totalByCategory = {};\nconst totalByCurrency = {};\n\nresult.forEach(item => {\n  const cat = item.分類 || '未分類';\n  const currency = item.幣值 || 'TWD';\n  const amount = parseFloat(item.金額) || 0;\n\n  if (!totalByCategory[cat]) totalByCategory[cat] = {};\n  if (!totalByCategory[cat][currency]) totalByCategory[cat][currency] = 0;\n  totalByCategory[cat][currency] += amount;\n\n  if (!totalByCurrency[currency]) totalByCurrency[currency] = 0;\n  totalByCurrency[currency] += amount;\n});\n\nreturn [{\n  json: {\n    year,\n    month,\n    queryType: 'details',\n    category,\n    recordCount: result.length,\n    records: result,\n    totalByCategory,\n    totalByCurrency\n  }\n}];"
+      },
+      "name": "Process Details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, -144],
+      "id": "e4f5a6b7-c8d9-0123-efab-456789012345"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst category = $('Parse and Route').first().json.category;\nconst year = $('Parse and Route').first().json.year;\nconst month = $('Parse and Route').first().json.month;\n\n// Skip title row (\"每月開支總結\") and Subtotal row; use 幣別 column as category label\nlet result = items\n  .map(item => item.json)\n  .filter(row => {\n    const label = row['幣別'] || '';\n    return label && label !== '每月開支總結' && label !== 'Subtotal';\n  })\n  .map(row => ({\n    分類: row['幣別'],\n    JPY: parseFloat(row['JPY']) || 0,\n    TWD: parseFloat(row['TWD']) || 0,\n    USD: parseFloat(row['USD']) || 0\n  }));\n\nif (category) {\n  result = result.filter(item => item.分類 && item.分類.includes(category));\n}\n\nreturn [{\n  json: {\n    year,\n    month,\n    queryType: 'summary',\n    category,\n    summary: result\n  }\n}];"
+      },
+      "name": "Process Summary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [960, -400],
+      "id": "f5a6b7c8-d9e0-1234-fabc-567890123456"
+    },
+    {
+      "parameters": {
+        "mode": "append",
+        "options": {}
+      },
+      "name": "Merge Results",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1200, -272],
+      "id": "a6b7c8d9-e0f1-2345-abcd-678901234567"
     },
     {
       "parameters": {
@@ -90,97 +173,41 @@
       "name": "Return Result",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [
-        896,
-        -272
-      ],
+      "position": [1392, -272],
       "id": "479464dc-4283-449f-acbc-120c7e490034"
-    },
-    {
-      "parameters": {
-        "workflowInputs": {
-          "values": [
-            {
-              "name": "year"
-            },
-            {
-              "name": "month"
-            },
-            {
-              "name": "queryType"
-            },
-            {
-              "name": "category"
-            }
-          ]
-        }
-      },
-      "type": "n8n-nodes-base.executeWorkflowTrigger",
-      "typeVersion": 1.1,
-      "position": [
-        -112,
-        -272
-      ],
-      "id": "ba9e0699-e1a7-4003-a9c3-3d82cfc3ee45",
-      "name": "When Executed by Another Workflow"
     }
   ],
   "pinData": {},
   "connections": {
-    "Parse and Route": {
-      "main": [
-        [
-          {
-            "node": "Read Google Sheet",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Read Google Sheet": {
-      "main": [
-        [
-          {
-            "node": "Process Data",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Process Data": {
-      "main": [
-        [
-          {
-            "node": "Return Result",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "When Executed by Another Workflow": {
-      "main": [
-        [
-          {
-            "node": "Load Sheets Map",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+      "main": [[{ "node": "Load Sheets Map", "type": "main", "index": 0 }]]
     },
     "Load Sheets Map": {
+      "main": [[{ "node": "Parse and Route", "type": "main", "index": 0 }]]
+    },
+    "Parse and Route": {
+      "main": [[{ "node": "Is Details?", "type": "main", "index": 0 }]]
+    },
+    "Is Details?": {
       "main": [
-        [
-          {
-            "node": "Parse and Route",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        [{ "node": "Read Details Sheet", "type": "main", "index": 0 }],
+        [{ "node": "Read Summary Sheet", "type": "main", "index": 0 }]
       ]
+    },
+    "Read Details Sheet": {
+      "main": [[{ "node": "Process Details", "type": "main", "index": 0 }]]
+    },
+    "Read Summary Sheet": {
+      "main": [[{ "node": "Process Summary", "type": "main", "index": 0 }]]
+    },
+    "Process Details": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 0 }]]
+    },
+    "Process Summary": {
+      "main": [[{ "node": "Merge Results", "type": "main", "index": 1 }]]
+    },
+    "Merge Results": {
+      "main": [[{ "node": "Return Result", "type": "main", "index": 0 }]]
     }
   },
   "active": true,
