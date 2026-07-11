@@ -66,8 +66,8 @@ services:
       - N8N_USER_MANAGEMENT_DISABLED=true
 
       # Queue mode (Redis)
-      - QUEUE_BULL_REDIS_HOST=redis
-      - QUEUE_BULL_REDIS_PORT=6379
+      # - QUEUE_BULL_REDIS_HOST=redis
+      # - QUEUE_BULL_REDIS_PORT=6379
       - EXECUTIONS_MODE=regular
 
     volumes:
