@@ -323,7 +323,7 @@
     },
     {
       "parameters": {
-        "description": "當讀取 Google Sheets 開銷記錄時，每一行包含以下欄位：\n- 項目 (A欄)\n- 日期 (B欄) \n- 幣值 (C欄)\n- 金額 (D欄)\n- 分類 (E欄) - 可能的值：「生活開銷」、「外食」、「交通」等\n- 註記 (F欄)\n\n工具使用範例：\n- \"二月我花在外食上的費用有多少？\" → read_expense_sheet(year=2025, month=2, queryType=\"details\", category=\"外食\")\n- \"幫我看一月的開支總結\" → read_expense_sheet(year=2025, month=1, queryType=\"summary\")\n- \"這個月娛樂花了多少？\" → read_expense_sheet(year=當前年, month=當前月, queryType=\"details\", category=\"娛樂\")\n\n注意事項：\n1. 從用戶問題中提取年份和月份，如果沒有指定則使用當前時間\n2. 判斷用戶是要看細項(details)還是總結(summary)\n3. 如果用戶提到特定類別（外食、交通、娛樂等），要帶入 category 參數",
+        "description": "查詢 Google Sheets 開銷記錄。\n\nqueryType 選擇規則：\n- details：提到特定店家或商品（例：便利商店、餐廳、超市、某品牌）→ 需要翻逐筆明細才能回答\n- details：明確要求「明細」、「每筆消費」、「列出所有記錄」\n- summary：其他所有情況（詢問某類別總花費、整體開支概況）→ 讀取預先彙整的總結表，金額最準確\n\n工具使用範例：\n- \"我在便利商店花了多少？\" → read_expense_sheet(year=當前年, month=當前月, queryType=\"details\", category=\"外食\")\n- \"外出餐廳的開銷有哪些？\" → read_expense_sheet(year=當前年, month=當前月, queryType=\"details\", category=\"外食\")\n- \"二月外食總共花了多少？\" → read_expense_sheet(year=2025, month=2, queryType=\"summary\", category=\"外食\")\n- \"幫我看一月的開支總結\" → read_expense_sheet(year=2025, month=1, queryType=\"summary\")\n- \"這個月娛樂花了多少？\" → read_expense_sheet(year=當前年, month=當前月, queryType=\"summary\", category=\"娛樂\")\n- \"列出三月所有外食明細\" → read_expense_sheet(year=2025, month=3, queryType=\"details\", category=\"外食\")\n\n注意事項：\n1. 從用戶問題中提取年份和月份，如果沒有指定則使用當前時間\n2. 提到特定店家或商品 → details；問總金額或概況 → summary\n3. 如果用戶提到特定類別（外食、交通、娛樂等），要帶入 category 參數",
         "workflowId": {
           "__rl": true,
           "value": "cQiKWswNrSR08KtJ",
